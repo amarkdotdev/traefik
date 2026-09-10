@@ -1167,6 +1167,14 @@ spec:
                   This middleware returns a custom page in lieu of the default, according to configured ranges of HTTP Status codes.
                   More info: https://doc.traefik.io/traefik/v3.7/reference/routing-configuration/http/middlewares/errorpages/
                 properties:
+                  errorRequestHeaders:
+                    description: |-
+                      ErrorRequestHeaders defines the list of request headers forwarded to the error page service.
+                      When nil (not set), all original request headers are forwarded.
+                      Set to an empty list to forward no headers, or list specific headers to forward only those.
+                    items:
+                      type: string
+                    type: array
                   query:
                     description: |-
                       Query defines the URL for the error page (hosted by service).
@@ -2468,6 +2476,16 @@ spec:
                       on the HTTP/2 connection.
                     pattern: ^([0-9]+(ns|us|µs|ms|s|m|h)?)+$
                     x-kubernetes-int-or-string: true
+                  readTimeout:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: ReadTimeout is the timeout for reading a response
+                      from the proxied server. The timeout between two successive
+                      read operations. The connection is closed if nothing is transmitted
+                      within this time.
+                    pattern: ^([0-9]+(ns|us|µs|ms|s|m|h)?)+$
+                    x-kubernetes-int-or-string: true
                   responseHeaderTimeout:
                     anyOf:
                     - type: integer
@@ -2475,6 +2493,16 @@ spec:
                     description: ResponseHeaderTimeout is the amount of time to wait
                       for a server's response headers after fully writing the request
                       (including its body, if any).
+                    pattern: ^([0-9]+(ns|us|µs|ms|s|m|h)?)+$
+                    x-kubernetes-int-or-string: true
+                  writeTimeout:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: WriteTimeout is the timeout for transmitting a request
+                      to the proxied server. The timeout between two successive write
+                      operations. The connection is closed if nothing is transmitted
+                      within this time.
                     pattern: ^([0-9]+(ns|us|µs|ms|s|m|h)?)+$
                     x-kubernetes-int-or-string: true
                 type: object

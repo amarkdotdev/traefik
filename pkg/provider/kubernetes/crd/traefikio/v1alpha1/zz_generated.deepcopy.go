@@ -270,6 +270,11 @@ func (in *ErrorPage) DeepCopyInto(out *ErrorPage) {
 		}
 	}
 	in.Service.DeepCopyInto(&out.Service)
+	if in.ErrorRequestHeaders != nil {
+		in, out := &in.ErrorRequestHeaders, &out.ErrorRequestHeaders
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	return
 }
 
@@ -404,6 +409,16 @@ func (in *ForwardingTimeouts) DeepCopyInto(out *ForwardingTimeouts) {
 	}
 	if in.PingTimeout != nil {
 		in, out := &in.PingTimeout, &out.PingTimeout
+		*out = new(intstr.IntOrString)
+		**out = **in
+	}
+	if in.ReadTimeout != nil {
+		in, out := &in.ReadTimeout, &out.ReadTimeout
+		*out = new(intstr.IntOrString)
+		**out = **in
+	}
+	if in.WriteTimeout != nil {
+		in, out := &in.WriteTimeout, &out.WriteTimeout
 		*out = new(intstr.IntOrString)
 		**out = **in
 	}
