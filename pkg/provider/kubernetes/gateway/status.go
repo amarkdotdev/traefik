@@ -7,7 +7,6 @@ import (
 	"github.com/rs/zerolog/log"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	gatev1 "sigs.k8s.io/gateway-api/apis/v1"
-	gatev1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 // statusReport collects the status writes produced by a single rebuild so they
@@ -15,6 +14,7 @@ import (
 type statusReport struct {
 	gatewayClasses     map[string]gatev1.GatewayClassStatus
 	gateways           map[ktypes.NamespacedName]gatev1.GatewayStatus
+	listenerSets       map[ktypes.NamespacedName]gatev1.ListenerSetStatus
 	httpRoutes         map[ktypes.NamespacedName]gatev1.RouteStatus
 	grpcRoutes         map[ktypes.NamespacedName]gatev1.RouteStatus
 	tcpRoutes          map[ktypes.NamespacedName]gatev1.RouteStatus
@@ -28,6 +28,7 @@ func newStatusReport() *statusReport {
 	return &statusReport{
 		gatewayClasses:     map[string]gatev1.GatewayClassStatus{},
 		gateways:           map[ktypes.NamespacedName]gatev1.GatewayStatus{},
+		listenerSets:       map[ktypes.NamespacedName]gatev1.ListenerSetStatus{},
 		httpRoutes:         map[ktypes.NamespacedName]gatev1.RouteStatus{},
 		grpcRoutes:         map[ktypes.NamespacedName]gatev1.RouteStatus{},
 		tcpRoutes:          map[ktypes.NamespacedName]gatev1.RouteStatus{},
@@ -53,6 +54,12 @@ func (r *statusReport) Flush(ctx context.Context, client *clientWrapper) {
 		}
 	}
 
+	for name, status := range r.listenerSets {
+		if err := client.UpdateListenerSetStatus(ctx, name, status); err != nil {
+			logger.Warn().Err(err).Str("listener_set", name.Name).Str("namespace", name.Namespace).Msg("Unable to update ListenerSet status")
+		}
+	}
+
 	for name, routeStatus := range r.httpRoutes {
 		status := gatev1.HTTPRouteStatus{RouteStatus: routeStatus}
 		if err := client.UpdateHTTPRouteStatus(ctx, name, r.gatewayListeners, status); err != nil {
@@ -68,7 +75,7 @@ func (r *statusReport) Flush(ctx context.Context, client *clientWrapper) {
 	}
 
 	for name, routeStatus := range r.tcpRoutes {
-		status := gatev1alpha2.TCPRouteStatus{RouteStatus: routeStatus}
+		status := gatev1.TCPRouteStatus{RouteStatus: routeStatus}
 		if err := client.UpdateTCPRouteStatus(ctx, name, r.gatewayListeners, status); err != nil {
 			logger.Warn().Err(err).Str("tcp_route", name.Name).Str("namespace", name.Namespace).Msg("Unable to update TCPRoute status")
 		}
@@ -94,6 +101,10 @@ func (r *statusReport) RecordGatewayClassStatus(gatewayClassName string, status 
 
 func (r *statusReport) RecordGatewayStatus(gateway ktypes.NamespacedName, status gatev1.GatewayStatus) {
 	r.gateways[gateway] = status
+}
+
+func (r *statusReport) RecordListenerSetStatus(listenerSet ktypes.NamespacedName, status gatev1.ListenerSetStatus) {
+	r.listenerSets[listenerSet] = status
 }
 
 func (r *statusReport) RecordHTTPRouteStatus(route ktypes.NamespacedName, status gatev1.RouteParentStatus) {

@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/go-acme/lego/v5/acme"
+	"github.com/go-acme/lego/v5/acme/api"
+	"github.com/go-acme/lego/v5/certcrypto"
 	"github.com/go-acme/lego/v5/certificate"
 	"github.com/go-acme/lego/v5/challenge"
 	"github.com/go-acme/lego/v5/challenge/dns01"
@@ -37,7 +39,11 @@ import (
 	traefiktls "github.com/traefik/traefik/v3/pkg/tls"
 	"github.com/traefik/traefik/v3/pkg/types"
 	"github.com/traefik/traefik/v3/pkg/version"
+	"k8s.io/utils/ptr"
 )
+
+// minRenewalInfoRetryAfter prevents a too short Retry-After from the ACME server to trigger checks in a loop.
+const minRenewalInfoRetryAfter = time.Minute
 
 const resolverSuffix = ".acme"
 
@@ -53,6 +59,8 @@ type Configuration struct {
 	KeyType              string   `description:"KeyType used for generating certificate private key. Allow value 'EC256', 'EC384', 'RSA2048', 'RSA4096', 'RSA8192'." json:"keyType,omitempty" toml:"keyType,omitempty" yaml:"keyType,omitempty" export:"true"`
 	EAB                  *EAB     `description:"External Account Binding to use." json:"eab,omitempty" toml:"eab,omitempty" yaml:"eab,omitempty"`
 	CertificatesDuration int      `description:"Certificates' duration in hours." json:"certificatesDuration,omitempty" toml:"certificatesDuration,omitempty" yaml:"certificatesDuration,omitempty" export:"true"`
+
+	ReusePrivateKey *bool `description:"Reuse the private key from the previous certificate generation during the renewal." json:"reusePrivateKey,omitempty" toml:"reusePrivateKey,omitempty" yaml:"reusePrivateKey,omitempty" export:"true"`
 
 	ClientTimeout               ptypes.Duration `description:"Timeout for a complete HTTP transaction with the ACME server." json:"clientTimeout,omitempty" toml:"clientTimeout,omitempty" yaml:"clientTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
 	ClientResponseHeaderTimeout ptypes.Duration `description:"Timeout for receiving the response headers when communicating with the ACME server." json:"clientResponseHeaderTimeout,omitempty" toml:"clientResponseHeaderTimeout,omitempty" yaml:"clientResponseHeaderTimeout,omitempty" label:"allowEmpty" file:"allowEmpty" export:"true"`
@@ -76,6 +84,7 @@ func (a *Configuration) SetDefaults() {
 	a.ClientTimeout = ptypes.Duration(2 * time.Minute)
 	a.ClientResponseHeaderTimeout = ptypes.Duration(30 * time.Second)
 	a.CertificateTimeout = ptypes.Duration(30 * time.Second)
+	a.ReusePrivateKey = new(true)
 }
 
 // CertAndStore allows mapping a TLS certificate to a TLS store.
@@ -100,9 +109,9 @@ type EAB struct {
 
 // DNSChallenge contains DNS challenge configuration.
 type DNSChallenge struct {
-	Provider    string       `description:"Use a DNS-01 based challenge provider rather than HTTPS." json:"provider,omitempty" toml:"provider,omitempty" yaml:"provider,omitempty" export:"true"`
-	Resolvers   []string     `description:"Use following DNS servers to resolve the FQDN authority." json:"resolvers,omitempty" toml:"resolvers,omitempty" yaml:"resolvers,omitempty"`
-	Propagation *Propagation `description:"DNS propagation checks configuration" json:"propagation,omitempty" toml:"propagation,omitempty" yaml:"propagation,omitempty"  label:"allowEmpty" file:"allowEmpty" export:"true"`
+	Provider    string      `description:"Use a DNS-01 based challenge provider rather than HTTPS." json:"provider,omitempty" toml:"provider,omitempty" yaml:"provider,omitempty" export:"true"`
+	Resolvers   []string    `description:"Use following DNS servers to resolve the FQDN authority." json:"resolvers,omitempty" toml:"resolvers,omitempty" yaml:"resolvers,omitempty"`
+	Propagation Propagation `description:"DNS propagation checks configuration" json:"propagation,omitempty" toml:"propagation,omitempty" yaml:"propagation,omitempty"  label:"allowEmpty" file:"allowEmpty" export:"true"`
 
 	// Deprecated: please use Propagation.DelayBeforeChecks instead.
 	DelayBeforeCheck ptypes.Duration `description:"(Deprecated) Assume DNS propagates after a delay in seconds rather than finding and querying nameservers." json:"delayBeforeCheck,omitempty" toml:"delayBeforeCheck,omitempty" yaml:"delayBeforeCheck,omitempty" export:"true"`
@@ -255,16 +264,15 @@ func (p *Provider) Provide(configurationChan chan<- dynamic.Message, pool *safe.
 	logger.Debug().Msgf("Attempt to renew certificates %q before expiry and check every %q",
 		renewPeriod, renewInterval)
 
-	p.renewCertificates(ctx, renewPeriod)
-
-	ticker := time.NewTicker(renewInterval)
+	timer := time.NewTimer(p.renewCertificates(ctx, renewPeriod, renewInterval))
 	pool.GoCtx(func(ctxPool context.Context) {
+		defer timer.Stop()
+
 		for {
 			select {
-			case <-ticker.C:
-				p.renewCertificates(ctx, renewPeriod)
+			case <-timer.C:
+				timer.Reset(p.renewCertificates(ctx, renewPeriod, renewInterval))
 			case <-ctxPool.Done():
-				ticker.Stop()
 				return
 			}
 		}
@@ -358,13 +366,9 @@ func (p *Provider) getClient() (*lego.Client, error) {
 
 		err = client.Challenge.SetDNS01Provider(
 			provider,
-			dns01.LazyCondOption(propagation != nil, func() dns01.ChallengeOption {
-				return dns01.CombineOptions(
-					dns01.CondOptions(propagation.DisableANSChecks, dns01.DisableAuthoritativeNssPropagationRequirement()),
-					dns01.CondOptions(!propagation.RequireAllRNS, dns01.DisableRecursiveNSsPropagationRequirement()),
-					dns01.PropagationWait(time.Duration(propagation.DelayBeforeChecks), propagation.DisableChecks),
-				)
-			}),
+			dns01.CondOptions(propagation.DisableANSChecks, dns01.DisableAuthoritativeNssPropagationRequirement()),
+			dns01.CondOptions(!propagation.RequireAllRNS, dns01.DisableRecursiveNSsPropagationRequirement()),
+			dns01.PropagationWait(time.Duration(propagation.DelayBeforeChecks), propagation.DisableChecks),
 		)
 		if err != nil {
 			return nil, err
@@ -620,6 +624,10 @@ func (p *Provider) watchNewDomains(ctx context.Context) {
 					validDomains, err := p.sanitizeDomains(ctx, *tlsStore.DefaultGeneratedCert.Domain)
 					if err != nil {
 						logger.Error().Err(err).Strs("domains", tlsStore.DefaultGeneratedCert.Domain.ToStrArray()).Msg("domains validation")
+					}
+
+					if len(validDomains) == 0 {
+						continue
 					}
 
 					if p.certExists(validDomains) {
@@ -894,11 +902,9 @@ func (p *Provider) buildMessage() dynamic.Message {
 
 	for _, cert := range p.certificates {
 		certConf := &traefiktls.CertAndStores{
-			Certificate: traefiktls.Certificate{
-				CertFile: types.FileOrContent(cert.Certificate.Certificate),
-				KeyFile:  types.FileOrContent(cert.Key),
-			},
-			Stores: []string{cert.Store},
+			CertFile: types.FileOrContent(cert.Certificate.Certificate),
+			KeyFile:  types.FileOrContent(cert.Key),
+			Stores:   []string{cert.Store},
 		}
 		conf.Configuration.TLS.Certificates = append(conf.Configuration.TLS.Certificates, certConf)
 	}
@@ -906,23 +912,39 @@ func (p *Provider) buildMessage() dynamic.Message {
 	return conf
 }
 
-func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Duration) {
+// renewCertificates renews the certificates that need it, and returns the duration to wait before the next check.
+func (p *Provider) renewCertificates(ctx context.Context, renewPeriod, renewInterval time.Duration) time.Duration {
 	logger := log.Ctx(ctx)
 
 	logger.Info().Msg("Testing certificate renew...")
 
 	p.certificatesMu.RLock()
+	stored := slices.Clone(p.certificates)
+	p.certificatesMu.RUnlock()
 
+	nextCheck := renewInterval
+
+	// Renewal information is fetched outside the lock, as it requires a request to the ACME server for each certificate.
 	var certificates []*CertAndStore
-	for _, cert := range p.certificates {
+	for _, cert := range stored {
 		crt, err := getX509Certificate(ctx, &cert.Certificate)
 		// If there's an error, we assume the cert is broken, and needs update
 		if err != nil || crt == nil || crt.NotAfter.Before(time.Now().Add(renewPeriod)) {
 			certificates = append(certificates, cert)
+			continue
+		}
+
+		suggested, retryAfter := p.checkRenewalInfo(ctx, crt)
+		if suggested {
+			certificates = append(certificates, cert)
+		}
+
+		// The suggested window can change before it starts, e.g. after a mass revocation,
+		// so the renewal information is fetched again as soon as the ACME server allows it.
+		if retryAfter > 0 {
+			nextCheck = min(nextCheck, max(retryAfter, minRenewalInfoRetryAfter))
 		}
 	}
-
-	p.certificatesMu.RUnlock()
 
 	for _, cert := range certificates {
 		client, err := p.getClient()
@@ -936,15 +958,26 @@ func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Durat
 		res := certificate.Resource{
 			ID:          cert.Domain.Main,
 			Domains:     cert.Domain.ToStrArray(),
-			PrivateKey:  cert.Key,
 			Certificate: cert.Certificate.Certificate,
+			KeyType:     GetKeyType(ctx, p.KeyType),
+		}
+
+		if ptr.Deref(p.ReusePrivateKey, true) && len(cert.Key) > 0 {
+			keyType, err := getPrivateKeyType(cert)
+			if err != nil {
+				logger.Error().Err(err).Msgf("Error getting ACME private certificate key type: %+v, fallback to %s key type", cert.Domain, res.KeyType)
+			} else if keyType == GetKeyType(ctx, p.KeyType) {
+				res.PrivateKey = cert.Key
+			}
 		}
 
 		opts := &certificate.RenewOptions{
-			Bundle:         true,
-			EmailAddresses: p.EmailAddresses,
-			Profile:        p.Profile,
-			PreferredChain: p.PreferredChain,
+			Bundle:           true,
+			EmailAddresses:   p.EmailAddresses,
+			Profile:          p.Profile,
+			PreferredChain:   p.PreferredChain,
+			EnableCommonName: !p.DisableCommonName,
+			UseARICertID:     true,
 		}
 
 		renewedCert, err := client.Certificate.Renew(ctx, res, opts)
@@ -963,6 +996,42 @@ func (p *Provider) renewCertificates(ctx context.Context, renewPeriod time.Durat
 			logger.Error().Err(err).Msg("Error adding certificate for domain")
 		}
 	}
+
+	return nextCheck
+}
+
+// checkRenewalInfo reports whether the ACME server suggests renewing the certificate now,
+// through ACME Renewal Information (RFC 9773), e.g. ahead of a mass revocation.
+// It also returns the duration the ACME server asks to wait before fetching the renewal information again.
+// This duration is 0 when the ACME server does not provide one or when the renewal information cannot be fetched,
+// so 0 is never a real Retry-After value, and the caller falls back on the renew interval.
+func (p *Provider) checkRenewalInfo(ctx context.Context, crt *x509.Certificate) (bool, time.Duration) {
+	logger := log.Ctx(ctx)
+
+	client, err := p.getClient()
+	if err != nil {
+		logger.Debug().Err(err).Msg("Unable to get ACME client to fetch renewal information")
+		return false, 0
+	}
+
+	info, err := client.Certificate.GetRenewalInfo(ctx, crt)
+	if err != nil {
+		if !errors.Is(err, api.ErrNoARI) {
+			logger.Warn().Err(err).Strs("domains", crt.DNSNames).Msg("Unable to fetch ACME renewal information")
+		}
+		return false, 0
+	}
+
+	// A zero sleep duration defers a renewal time selected in the future to a later check,
+	// so the renewal happens at the first check after it.
+	if info.ShouldRenewAt(time.Now(), 0) == nil {
+		return false, info.RetryAfter
+	}
+
+	logger.Info().Strs("domains", crt.DNSNames).Str("explanationURL", info.ExplanationURL).
+		Msg("ACME renewal information suggests renewing the certificate")
+
+	return true, info.RetryAfter
 }
 
 // Get provided certificate which check a domains list (Main and SANs)
@@ -1055,7 +1124,12 @@ func (p *Provider) sanitizeDomains(ctx context.Context, domain types.Domain) ([]
 	var cleanDomains []string
 	for _, dom := range domains {
 		if strings.HasPrefix(dom, "*.*") {
-			return nil, fmt.Errorf("unable to generate a wildcard certificate in ACME provider for domain %q : ACME does not allow '*.*' wildcard domain", strings.Join(domains, ","))
+			return nil, fmt.Errorf("unable to generate a wildcard certificate in ACME provider for domains %q : ACME does not allow '*.*' wildcard domain", strings.Join(domains, ","))
+		}
+
+		if strings.HasPrefix(dom, "**.") {
+			// ACME only issues single-level wildcard certificates.
+			return nil, fmt.Errorf("unable to generate a wildcard certificate in ACME provider for domains %q : ACME does not allow '**.' wildcard domain", strings.Join(domains, ","))
 		}
 
 		canonicalDomain := types.CanonicalDomain(dom)
@@ -1088,6 +1162,20 @@ func (p *Provider) certExists(validDomains []string) bool {
 	}
 
 	return false
+}
+
+func getPrivateKeyType(cert *CertAndStore) (certcrypto.KeyType, error) {
+	key, err := certcrypto.ParsePEMPrivateKey(cert.Key)
+	if err != nil {
+		return certcrypto.RSA4096, err
+	}
+
+	keyType, err := certcrypto.GetPrivateKeyType(key)
+	if err != nil {
+		return certcrypto.RSA4096, err
+	}
+
+	return keyType, nil
 }
 
 func isDomainAlreadyChecked(domainToCheck string, existentDomains []string) bool {

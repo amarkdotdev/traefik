@@ -12,7 +12,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/traefik/v3/pkg/config/dynamic"
-	"github.com/traefik/traefik/v3/pkg/provider"
 	"google.golang.org/grpc/codes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,97 +20,110 @@ import (
 	gatev1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
-// TODO: as described in the specification https://gateway-api.sigs.k8s.io/reference/spec/#gateway.networking.k8s.io%2fv1.GRPCRoute, we should check for hostname conflicts between HTTP and GRPC routes.
-func (p *Provider) loadGRPCRoutes(ctx context.Context, gateways []gatewayWithListeners, conf *dynamic.Configuration, statusReport *statusReport) {
-	routes, err := p.client.ListGRPCRoutes()
-	if err != nil {
-		log.Ctx(ctx).Error().Err(err).Msg("Unable to list GRPCRoutes")
+func (p *Provider) loadGRPCRoute(ctx context.Context, gateways []gatewayWithListeners, route *gatev1.GRPCRoute, conf *dynamic.Configuration, attachedRoutes attachedRoutes, servedRules servedRules, statusReport *statusReport) {
+	logger := log.Ctx(ctx).With().
+		Str("grpc_route", route.Name).
+		Str("namespace", route.Namespace).
+		Logger()
+
+	routeParentRefs := matchingGatewayListenersForParentRef(gateways, route.Namespace, route.Spec.ParentRefs)
+	if len(routeParentRefs) == 0 {
 		return
 	}
 
-	for _, route := range routes {
-		logger := log.Ctx(ctx).With().
-			Str("grpc_route", route.Name).
-			Str("namespace", route.Namespace).
-			Logger()
-		routeParentRefs := matchingGatewayListenersForParentRef(gateways, route.Namespace, route.Spec.ParentRefs)
-		if len(routeParentRefs) == 0 {
-			continue
+	for _, match := range routeParentRefs {
+		acceptedCondition := metav1.Condition{
+			Type:               string(gatev1.RouteConditionAccepted),
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: route.Generation,
+			LastTransitionTime: metav1.Now(),
+			Reason:             string(gatev1.RouteReasonNoMatchingParent),
 		}
 
-		for _, match := range routeParentRefs {
-			acceptedCondition := metav1.Condition{
-				Type:               string(gatev1.RouteConditionAccepted),
-				Status:             metav1.ConditionFalse,
-				ObservedGeneration: route.Generation,
-				LastTransitionTime: metav1.Now(),
-				Reason:             string(gatev1.RouteReasonNoMatchingParent),
+		var resolvedRefCondition *metav1.Condition
+		for _, listener := range match.Listeners {
+			// A parentRef can target specific listeners through its SectionName or Port.
+			accepted := matchListener(listener, match.ParentRef)
+
+			if accepted && !allowRoute(listener, route.Namespace, kindGRPCRoute) {
+				if acceptedCondition.Status == metav1.ConditionFalse {
+					acceptedCondition.Reason = string(gatev1.RouteReasonNotAllowedByListeners)
+				}
+				accepted = false
 			}
 
-			var resolvedRefCondition *metav1.Condition
-			for _, listener := range match.listeners {
-				// A parentRef can target specific listeners through its SectionName or Port.
-				accepted := matchListener(listener, match.parentRef)
+			hostnames, ok := findMatchingHostnames(listener.Hostname, route.Spec.Hostnames)
+			if accepted && !ok {
+				if acceptedCondition.Status == metav1.ConditionFalse {
+					acceptedCondition.Reason = string(gatev1.RouteReasonNoMatchingListenerHostname)
+				}
+				accepted = false
+			}
 
-				if accepted && !allowRoute(listener, route.Namespace, kindGRPCRoute) {
-					if acceptedCondition.Status == metav1.ConditionFalse {
-						acceptedCondition.Reason = string(gatev1.RouteReasonNotAllowedByListeners)
+			ref := listenerRef{
+				GatewayNamespace: match.GatewayNamespace,
+				GatewayName:      match.GatewayName,
+				SectionName:      listener.SectionName,
+			}
+			if accepted && attachedRoutes.Conflicts(ref, kindGRPCRoute, hostnames) {
+				if acceptedCondition.Status == metav1.ConditionFalse {
+					acceptedCondition.Reason = string(routeReasonHostnameConflict)
+				}
+				accepted = false
+			}
+
+			if accepted {
+				// Gateway listener should have AttachedRoutes set even when Gateway has unresolved refs.
+				listener.Status.AttachedRoutes++
+
+				attachedRoutes.Record(ref, kindGRPCRoute, hostnames)
+			}
+
+			// The ResolvedRefs condition must be reported for every parentRef,
+			// even when the route does not attach to the listener.
+			routerConfs, condition := p.loadGRPCRouteConfiguration(logger.WithContext(ctx), match.GatewayName, match.GatewayNamespace, listener, route, hostnames, statusReport)
+			if resolvedRefCondition == nil || resolvedRefCondition.Status == metav1.ConditionTrue {
+				resolvedRefCondition = new(condition)
+			}
+
+			if accepted && listener.Attached {
+				for _, rc := range routerConfs {
+					router := rc.Conf.HTTP.Routers[rc.Name]
+					if servedBy, alreadyServed := servedRules.register(rc.Name, router.ParentRefs, router.Rule); alreadyServed {
+						logger.Warn().Msgf("Traefik does not create router %q, because router %q serves the rule %q under the same parent routers", rc.Name, servedBy, router.Rule)
+						continue
 					}
-					accepted = false
+
+					mergeHTTPConfiguration(rc.Conf, conf)
 				}
 
-				hostnames, ok := findMatchingHostnames(listener.Hostname, route.Spec.Hostnames)
-				if accepted && !ok {
-					if acceptedCondition.Status == metav1.ConditionFalse {
-						acceptedCondition.Reason = string(gatev1.RouteReasonNoMatchingListenerHostname)
-					}
-					accepted = false
-				}
-
-				if accepted {
-					// Gateway listener should have AttachedRoutes set even when Gateway has unresolved refs.
-					listener.Status.AttachedRoutes++
-				}
-
-				// The ResolvedRefs condition must be reported for every parentRef,
-				// even when the route does not attach to the listener.
-				routeConf, condition := p.loadGRPCRoute(logger.WithContext(ctx), match.gatewayName, match.gatewayNamespace, listener, route, hostnames, statusReport)
-				if resolvedRefCondition == nil || resolvedRefCondition.Status == metav1.ConditionTrue {
-					resolvedRefCondition = ptr.To(condition)
-				}
-
-				if accepted && listener.Attached {
-					mergeHTTPConfiguration(routeConf, conf)
-
-					// Only consider the route attached if the listener is in an "attached" state.
-					acceptedCondition.Reason = string(gatev1.RouteReasonAccepted)
-					acceptedCondition.Status = metav1.ConditionTrue
-				}
+				// Only consider the route attached if the listener is in an "attached" state.
+				acceptedCondition.Reason = string(gatev1.RouteReasonAccepted)
+				acceptedCondition.Status = metav1.ConditionTrue
 			}
-
-			parentStatusConditions := []metav1.Condition{acceptedCondition}
-			if resolvedRefCondition != nil {
-				parentStatusConditions = append(parentStatusConditions, *resolvedRefCondition)
-			}
-
-			statusReport.RecordGRPCRouteStatus(ktypes.NamespacedName{Namespace: route.Namespace, Name: route.Name}, gatev1.RouteParentStatus{
-				ParentRef:      match.parentRef,
-				ControllerName: controllerName,
-				Conditions:     parentStatusConditions,
-			})
 		}
+
+		parentStatusConditions := []metav1.Condition{acceptedCondition}
+		if resolvedRefCondition != nil {
+			parentStatusConditions = append(parentStatusConditions, *resolvedRefCondition)
+		}
+
+		statusReport.RecordGRPCRouteStatus(ktypes.NamespacedName{Namespace: route.Namespace, Name: route.Name}, gatev1.RouteParentStatus{
+			ParentRef:      match.ParentRef,
+			ControllerName: controllerName,
+			Conditions:     parentStatusConditions,
+		})
 	}
 }
 
-func (p *Provider) loadGRPCRoute(ctx context.Context, gatewayName, gatewayNamespace string, listener gatewayListener, route *gatev1.GRPCRoute, hostnames []gatev1.Hostname, statusReport *statusReport) (*dynamic.Configuration, metav1.Condition) {
-	conf := &dynamic.Configuration{
-		HTTP: &dynamic.HTTPConfiguration{
-			Routers:           make(map[string]*dynamic.Router),
-			Middlewares:       make(map[string]*dynamic.Middleware),
-			Services:          make(map[string]*dynamic.Service),
-			ServersTransports: make(map[string]*dynamic.ServersTransport),
-		},
-	}
+// grpcRouteRouter is a router of a GRPCRoute, with the configuration of its resources.
+type grpcRouteRouter struct {
+	Name string
+	Conf *dynamic.Configuration
+}
+
+func (p *Provider) loadGRPCRouteConfiguration(ctx context.Context, gatewayName, gatewayNamespace string, listener gatewayListener, route *gatev1.GRPCRoute, hostnames []gatev1.Hostname, statusReport *statusReport) ([]grpcRouteRouter, metav1.Condition) {
+	var routers []grpcRouteRouter
 
 	condition := metav1.Condition{
 		Type:               string(gatev1.RouteConditionResolvedRefs),
@@ -122,9 +134,6 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, gatewayName, gatewayNamesp
 	}
 
 	for ri, routeRule := range route.Spec.Rules {
-		// Adding the gateway desc and the entryPoint desc prevents overlapping of routers build from the same routes.
-		routeKey := provider.Normalize(fmt.Sprintf("%s-%s-%s-gw-%s-%s-ep-%s-%d", strings.ToLower(kindGRPCRoute), route.Namespace, route.Name, gatewayNamespace, gatewayName, listener.EPName, ri))
-
 		matches := routeRule.Matches
 		if len(matches) == 0 {
 			matches = []gatev1.GRPCRouteMatch{{}}
@@ -132,27 +141,33 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, gatewayName, gatewayNamesp
 
 		for _, match := range matches {
 			rule, priority := buildGRPCMatchRule(hostnames, match)
-
 			router := dynamic.Router{
 				// "default" stands for the default rule syntax in Traefik v3, i.e. the v3 syntax.
-				RuleSyntax:  "default",
-				Rule:        rule,
-				Priority:    priority,
-				EntryPoints: []string{listener.EPName},
+				RuleSyntax: "default",
+				Rule:       rule,
+				Priority:   priority,
+				ParentRefs: listener.RouterNames,
 			}
-			if listener.Protocol == gatev1.HTTPSProtocolType {
-				router.TLS = &dynamic.RouterTLSConfig{}
+
+			routerName := makeRouterName(strings.ToLower(kindGRPCRoute), rule, route.Namespace, route.Name, gatewayNamespace, gatewayName, listener.EPName, ri)
+
+			routerConf := &dynamic.Configuration{
+				HTTP: &dynamic.HTTPConfiguration{
+					Routers:           make(map[string]*dynamic.Router),
+					Middlewares:       make(map[string]*dynamic.Middleware),
+					Services:          make(map[string]*dynamic.Service),
+					ServersTransports: make(map[string]*dynamic.ServersTransport),
+				},
 			}
 
 			var err error
-			routerName := makeRouterName(rule, routeKey)
-			router.Middlewares, err = p.loadGRPCMiddlewares(conf, route.Namespace, routerName, routeRule.Filters)
+			router.Middlewares, err = p.loadGRPCMiddlewares(routerConf, route.Namespace, routerName, routeRule.Filters)
 			switch {
 			case err != nil:
-				log.Ctx(ctx).Error().Err(err).Msg("Unable to load GRPC route filters")
+				log.Ctx(ctx).Debug().Err(err).Msg("Unable to load GRPC route filters")
 
 				errWrrName := routerName + "-err-wrr"
-				conf.HTTP.Services[errWrrName] = &dynamic.Service{
+				routerConf.HTTP.Services[errWrrName] = &dynamic.Service{
 					Weighted: &dynamic.WeightedRoundRobin{
 						Services: []dynamic.WRRService{
 							{
@@ -161,7 +176,7 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, gatewayName, gatewayNamesp
 									Code: codes.Unavailable,
 									Msg:  "Service Unavailable",
 								},
-								Weight: ptr.To(1),
+								Weight: new(1),
 							},
 						},
 					},
@@ -170,21 +185,22 @@ func (p *Provider) loadGRPCRoute(ctx context.Context, gatewayName, gatewayNamesp
 
 			default:
 				var serviceCondition *metav1.Condition
-				router.Service, serviceCondition = p.loadGRPCService(gatewayName, listener, conf, routerName, routeRule, route, statusReport)
+				router.Service, serviceCondition = p.loadGRPCService(gatewayName, gatewayNamespace, listener, routerConf, routerName, routeRule, route, statusReport)
 				if serviceCondition != nil {
 					condition = *serviceCondition
 				}
 			}
 
-			conf.HTTP.Routers[routerName] = &router
+			routerConf.HTTP.Routers[routerName] = &router
+			routers = append(routers, grpcRouteRouter{Name: routerName, Conf: routerConf})
 		}
 	}
 
-	return conf, condition
+	return routers, condition
 }
 
-func (p *Provider) loadGRPCService(gatewayName string, listener gatewayListener, conf *dynamic.Configuration, routeKey string, routeRule gatev1.GRPCRouteRule, route *gatev1.GRPCRoute, statusReport *statusReport) (string, *metav1.Condition) {
-	name := routeKey + "-wrr"
+func (p *Provider) loadGRPCService(gatewayName, gatewayNamespace string, listener gatewayListener, conf *dynamic.Configuration, routerName string, routeRule gatev1.GRPCRouteRule, route *gatev1.GRPCRoute, statusReport *statusReport) (string, *metav1.Condition) {
+	name := routerName + "-wrr"
 	if _, ok := conf.HTTP.Services[name]; ok {
 		return name, nil
 	}
@@ -192,8 +208,8 @@ func (p *Provider) loadGRPCService(gatewayName string, listener gatewayListener,
 	var wrr dynamic.WeightedRoundRobin
 	var condition *metav1.Condition
 	for bi, backendRef := range routeRule.BackendRefs {
-		svcName, svc, errCondition := p.loadGRPCBackendRef(gatewayName, listener, conf, routeKey, route, bi, backendRef, statusReport)
-		weight := ptr.To(int(ptr.Deref(backendRef.Weight, 1)))
+		svcName, svc, errCondition := p.loadGRPCBackendRef(gatewayName, gatewayNamespace, listener, conf, routerName, route, bi, backendRef, statusReport)
+		weight := new(int(ptr.Deref(backendRef.Weight, 1)))
 		if errCondition != nil {
 			condition = errCondition
 			wrr.Services = append(wrr.Services, dynamic.WRRService{
@@ -221,7 +237,7 @@ func (p *Provider) loadGRPCService(gatewayName string, listener gatewayListener,
 	return name, condition
 }
 
-func (p *Provider) loadGRPCBackendRef(gatewayName string, listener gatewayListener, conf *dynamic.Configuration, routeKey string, route *gatev1.GRPCRoute, backendIndex int, backendRef gatev1.GRPCBackendRef, statusReport *statusReport) (string, *dynamic.Service, *metav1.Condition) {
+func (p *Provider) loadGRPCBackendRef(gatewayName, gatewayNamespace string, listener gatewayListener, conf *dynamic.Configuration, routerName string, route *gatev1.GRPCRoute, backendIndex int, backendRef gatev1.GRPCBackendRef, statusReport *statusReport) (string, *dynamic.Service, *metav1.Condition) {
 	kind := ptr.Deref(backendRef.Kind, kindService)
 
 	group := groupCore
@@ -234,7 +250,7 @@ func (p *Provider) loadGRPCBackendRef(gatewayName string, listener gatewayListen
 		namespace = string(*backendRef.Namespace)
 	}
 
-	serviceName := fmt.Sprintf("%s-svc-%s-%s-%d", routeKey, namespace, string(backendRef.Name), backendIndex)
+	serviceName := fmt.Sprintf("%s-svc-%s-%s-%d", routerName, namespace, backendRef.Name, backendIndex)
 
 	if group != groupCore || kind != kindService {
 		return serviceName, nil, &metav1.Condition{
@@ -270,7 +286,7 @@ func (p *Provider) loadGRPCBackendRef(gatewayName string, listener gatewayListen
 		}
 	}
 
-	lb, st, errCondition := p.loadGRPCServers(gatewayName, namespace, route, backendRef, listener, statusReport)
+	lb, st, errCondition := p.loadGRPCServers(gatewayName, gatewayNamespace, namespace, route, backendRef, listener, statusReport)
 	if errCondition != nil {
 		return serviceName, nil, errCondition
 	}
@@ -329,7 +345,7 @@ func (p *Provider) loadGRPCMiddlewares(conf *dynamic.Configuration, namespace, r
 	return middlewareNames, nil
 }
 
-func (p *Provider) loadGRPCServers(gatewayName, namespace string, route *gatev1.GRPCRoute, backendRef gatev1.GRPCBackendRef, listener gatewayListener, statusReport *statusReport) (*dynamic.ServersLoadBalancer, *dynamic.ServersTransport, *metav1.Condition) {
+func (p *Provider) loadGRPCServers(gatewayName, gatewayNamespace, namespace string, route *gatev1.GRPCRoute, backendRef gatev1.GRPCBackendRef, listener gatewayListener, statusReport *statusReport) (*dynamic.ServersLoadBalancer, *dynamic.ServersTransport, *metav1.Condition) {
 	backendAddresses, svcPort, err := p.getBackendAddresses(namespace, backendRef.BackendRef)
 	if err != nil {
 		return nil, nil, &metav1.Condition{
@@ -378,11 +394,11 @@ func (p *Provider) loadGRPCServers(gatewayName, namespace string, route *gatev1.
 
 			policyAncestorStatus := gatev1.PolicyAncestorStatus{
 				AncestorRef: gatev1.ParentReference{
-					Group:       ptr.To(gatev1.Group(groupGateway)),
-					Kind:        ptr.To(gatev1.Kind(kindGateway)),
-					Namespace:   ptr.To(gatev1.Namespace(namespace)),
+					Group:       new(gatev1.Group(groupGateway)),
+					Kind:        new(gatev1.Kind(kindGateway)),
+					Namespace:   new(gatev1.Namespace(gatewayNamespace)),
 					Name:        gatev1.ObjectName(gatewayName),
-					SectionName: ptr.To(gatev1.SectionName(listener.Name)),
+					SectionName: new(gatev1.SectionName(listener.SectionName)),
 				},
 				ControllerName: controllerName,
 			}
@@ -412,7 +428,7 @@ func (p *Provider) loadGRPCServers(gatewayName, namespace string, route *gatev1.
 			}
 
 			var resolvedRefCondition metav1.Condition
-			serversTransport, resolvedRefCondition = p.loadServersTransport(namespace, policy)
+			serversTransport, resolvedRefCondition = p.loadServersTransport(namespace, policy, listener.BackendClientCertificates)
 
 			policyAncestorStatus.Conditions = append(policyAncestorStatus.Conditions, resolvedRefCondition)
 			if resolvedRefCondition.Status == metav1.ConditionFalse {

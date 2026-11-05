@@ -75,7 +75,7 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -139,7 +139,7 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -205,7 +205,7 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -263,7 +263,7 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -321,7 +321,7 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -385,7 +385,7 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -406,10 +406,8 @@ func TestDynConfBuilder_DefaultRule(t *testing.T) {
 			t.Parallel()
 
 			p := Provider{
-				Shared: Shared{
-					ExposedByDefault: true,
-					DefaultRule:      test.defaultRule,
-				},
+				ExposedByDefault: true,
+				DefaultRule:      test.defaultRule,
 			}
 			require.NoError(t, p.Init())
 
@@ -618,7 +616,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -702,7 +700,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -716,7 +714,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -800,7 +798,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -865,7 +863,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -931,7 +929,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -989,7 +987,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1060,7 +1058,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1121,7 +1119,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1135,7 +1133,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1200,7 +1198,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1447,7 +1445,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1511,7 +1509,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1612,7 +1610,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1700,7 +1698,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1810,7 +1808,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.3:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1892,7 +1890,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -1996,7 +1994,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.3:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2083,7 +2081,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2160,7 +2158,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2174,7 +2172,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2239,7 +2237,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2305,7 +2303,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "h2c://127.0.0.1:8080",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2365,7 +2363,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2379,7 +2377,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:8080",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2444,7 +2442,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://1.2.3.4:5678",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2511,7 +2509,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										PreservePath: true,
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -2806,7 +2804,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 						"Test": {
 							LoadBalancer: &dynamic.ServersLoadBalancer{
 								Strategy:       dynamic.BalancerStrategyWRR,
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -3072,7 +3070,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -3148,7 +3146,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -3623,7 +3621,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.2:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -3805,7 +3803,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://192.168.0.1:8081",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -3869,7 +3867,7 @@ func TestDynConfBuilder_build(t *testing.T) {
 										URL: "http://127.0.0.1:79",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
 								},
@@ -3910,14 +3908,12 @@ func TestDynConfBuilder_build(t *testing.T) {
 			t.Parallel()
 
 			p := Provider{
-				Shared: Shared{
-					AllowEmptyServices: test.allowEmptyServices,
-					ExposedByDefault:   true,
-					UseBindPortIP:      test.useBindPortIP,
-					DefaultRule:        "Host(`{{ normalize .Name }}.traefik.wtf`)",
-				},
+				AllowEmptyServices: test.allowEmptyServices,
+				ExposedByDefault:   true,
+				UseBindPortIP:      test.useBindPortIP,
+				DefaultRule:        "Host(`{{ normalize .Name }}.traefik.wtf`)",
+				Constraints:        test.constraints,
 			}
-			p.Constraints = test.constraints
 
 			require.NoError(t, p.Init())
 
@@ -3991,7 +3987,7 @@ func TestDynConfBuilder_build_allowNonRunning(t *testing.T) {
 					Services: map[string]*dynamic.Service{
 						"Test": {
 							LoadBalancer: &dynamic.ServersLoadBalancer{
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								Strategy:       "wrr",
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
@@ -4108,7 +4104,7 @@ func TestDynConfBuilder_build_allowNonRunning(t *testing.T) {
 										URL: "http://127.0.0.1:80",
 									},
 								},
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								Strategy:       "wrr",
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
@@ -4172,7 +4168,7 @@ func TestDynConfBuilder_build_allowNonRunning(t *testing.T) {
 					Services: map[string]*dynamic.Service{
 						"Test": {
 							LoadBalancer: &dynamic.ServersLoadBalancer{
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								Strategy:       "wrr",
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
@@ -4236,7 +4232,7 @@ func TestDynConfBuilder_build_allowNonRunning(t *testing.T) {
 					Services: map[string]*dynamic.Service{
 						"Test": {
 							LoadBalancer: &dynamic.ServersLoadBalancer{
-								PassHostHeader: pointer(true),
+								PassHostHeader: new(true),
 								Strategy:       "wrr",
 								ResponseForwarding: &dynamic.ResponseForwarding{
 									FlushInterval: ptypes.Duration(100 * time.Millisecond),
@@ -4749,5 +4745,3 @@ func TestDynConfBuilder_getIPAddress_swarm(t *testing.T) {
 		})
 	}
 }
-
-func pointer[T any](v T) *T { return &v }

@@ -343,11 +343,10 @@ func (p *Provider) loadConfigurationFromIngresses(ctx context.Context, client Cl
 				Service:    "default-backend",
 				Observability: &dynamic.RouterObservabilityConfig{
 					Metadata: &dynamic.ObservabilityMetadata{
-						Ingress: &dynamic.KubernetesIngressMetadata{
-							Namespace:   ingress.Namespace,
-							IngressName: ingress.Name,
-							ServiceName: ingress.Spec.DefaultBackend.Service.Name,
-							ServicePort: portString(ingress.Spec.DefaultBackend.Service.Port),
+						Ingress: &dynamic.KubernetesMetadata{
+							Kind:      "Ingress",
+							Namespace: ingress.Namespace,
+							Name:      ingress.Name,
 						},
 					},
 				},
@@ -357,6 +356,7 @@ func (p *Provider) loadConfigurationFromIngresses(ctx context.Context, client Cl
 				rt.EntryPoints = rtConfig.Router.EntryPoints
 				rt.Middlewares = rtConfig.Router.Middlewares
 				rt.TLS = rtConfig.Router.TLS
+				rt.RespondingTimeouts = rtConfig.Router.RespondingTimeouts
 
 				if rtConfig.Router.Observability != nil {
 					rt.Observability.AccessLogs = rtConfig.Router.Observability.AccessLogs
@@ -613,7 +613,18 @@ func (p *Provider) loadService(client Client, namespace string, backend netv1.In
 	lb := &dynamic.ServersLoadBalancer{}
 	lb.SetDefaults()
 
-	svc := &dynamic.Service{LoadBalancer: lb}
+	svc := &dynamic.Service{
+		LoadBalancer: lb,
+		Observability: &dynamic.ServiceObservabilityConfig{
+			Metadata: &dynamic.ServiceObservabilityMetadata{
+				Kubernetes: &dynamic.KubernetesServiceMetadata{
+					Namespace: namespace,
+					Name:      backend.Service.Name,
+					Port:      portString(backend.Service.Port),
+				},
+			},
+		},
+	}
 
 	svcConfig, err := parseServiceConfig(service.Annotations)
 	if err != nil {
@@ -624,7 +635,14 @@ func (p *Provider) loadService(client Client, namespace string, backend netv1.In
 
 	if svcConfig != nil && svcConfig.Service != nil {
 		svc.LoadBalancer.Sticky = svcConfig.Service.Sticky
-		svc.Middlewares = svcConfig.Service.Middlewares
+
+		if len(svcConfig.Service.Middlewares) > 0 {
+			if p.CrossProviderNamespaces != nil && !slices.Contains(p.CrossProviderNamespaces, namespace) {
+				return nil, fmt.Errorf("cross-provider middleware reference is not allowed from namespace %q", namespace)
+			}
+
+			svc.Middlewares = svcConfig.Service.Middlewares
+		}
 
 		if svcConfig.Service.PassHostHeader != nil {
 			svc.LoadBalancer.PassHostHeader = svcConfig.Service.PassHostHeader
@@ -716,8 +734,8 @@ func (p *Provider) loadService(client Client, namespace string, backend netv1.In
 	for _, endpointSlice := range endpointSlices {
 		var port int32
 		for _, p := range endpointSlice.Ports {
-			if portName == *p.Name {
-				port = *p.Port
+			if p.Name != nil && portName == *p.Name {
+				port = ptr.Deref(p.Port, 0)
 				break
 			}
 		}
@@ -757,11 +775,10 @@ func (p *Provider) loadRouter(ingress *netv1.Ingress, rule netv1.IngressRule, pa
 		Service: serviceName,
 		Observability: &dynamic.RouterObservabilityConfig{
 			Metadata: &dynamic.ObservabilityMetadata{
-				Ingress: &dynamic.KubernetesIngressMetadata{
-					Namespace:   ingress.Namespace,
-					IngressName: ingress.Name,
-					ServiceName: pa.Backend.Service.Name,
-					ServicePort: portString(pa.Backend.Service.Port),
+				Ingress: &dynamic.KubernetesMetadata{
+					Kind:      "Ingress",
+					Namespace: ingress.Namespace,
+					Name:      ingress.Name,
 				},
 			},
 		},
@@ -773,6 +790,7 @@ func (p *Provider) loadRouter(ingress *netv1.Ingress, rule netv1.IngressRule, pa
 		rt.EntryPoints = rtConfig.Router.EntryPoints
 		rt.Middlewares = rtConfig.Router.Middlewares
 		rt.TLS = rtConfig.Router.TLS
+		rt.RespondingTimeouts = rtConfig.Router.RespondingTimeouts
 
 		if rtConfig.Router.Observability != nil {
 			rt.Observability.AccessLogs = rtConfig.Router.Observability.AccessLogs
@@ -847,10 +865,8 @@ func getCertificates(ctx context.Context, ingress *netv1.Ingress, k8sClient Clie
 			}
 
 			tlsConfigs[configKey] = &tls.CertAndStores{
-				Certificate: tls.Certificate{
-					CertFile: types.FileOrContent(cert),
-					KeyFile:  types.FileOrContent(key),
-				},
+				CertFile: types.FileOrContent(cert),
+				KeyFile:  types.FileOrContent(key),
 			}
 		}
 	}

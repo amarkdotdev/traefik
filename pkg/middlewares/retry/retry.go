@@ -26,9 +26,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Compile time validation that the response writer implements http interfaces correctly.
-var _ middlewares.Stateful = &responseWriter{}
-
 const typeName = "Retry"
 
 // Listener is used to inform about retry attempts.
@@ -230,8 +227,9 @@ func (r *retry) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		r.next.ServeHTTP(retryResponseWriter, retryReq)
 
-		// End the operation as soon as the client received something.
-		if retryResponseWriter.written {
+		// End the operation as soon as the client received something
+		// or when the request is hijacked.
+		if retryResponseWriter.written || retryResponseWriter.hijacked {
 			return nil
 		}
 
@@ -298,6 +296,7 @@ type responseWriter struct {
 
 	proxyReached   atomic.Bool
 	wroteRequest   atomic.Bool
+	hijacked       bool
 	written        bool
 	shouldNotWrite bool
 }
@@ -366,18 +365,37 @@ func (r *responseWriter) WriteHeader(code int) {
 	r.written = true
 }
 
-func (r *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	hijacker, ok := r.responseWriter.(http.Hijacker)
-	if !ok {
-		return nil, nil, fmt.Errorf("%T is not a http.Hijacker", r.responseWriter)
+// FlushError sends any buffered data to the client.
+func (r *responseWriter) FlushError() error {
+	if !r.written {
+		r.WriteHeader(http.StatusOK)
 	}
-	return hijacker.Hijack()
+
+	// The response is discarded for a retry,
+	// and flushing it would commit an implicit 200 to the client.
+	if r.shouldNotWrite {
+		return nil
+	}
+
+	return http.NewResponseController(r.responseWriter).Flush()
 }
 
-func (r *responseWriter) Flush() {
-	if flusher, ok := r.responseWriter.(http.Flusher); ok {
-		flusher.Flush()
+func (r *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, brw, err := http.NewResponseController(r.responseWriter).Hijack()
+	if errors.Is(err, http.ErrNotSupported) {
+		return nil, nil, err
 	}
+
+	// When the connection is Hijacked when using Websockets, we don't want to retry anymore,
+	// so we set the hijacked flag to true.
+	r.hijacked = true
+
+	return conn, brw, err
+}
+
+// Unwrap exposes the underlying ResponseWriter for http.ResponseController.
+func (r *responseWriter) Unwrap() http.ResponseWriter {
+	return r.responseWriter
 }
 
 type peekedBody struct {

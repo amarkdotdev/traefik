@@ -15,33 +15,49 @@
     },
     "nixpkgs-golangci": {
       "locked": {
-        "lastModified": 1771861243,
-        "narHash": "sha256-mz05b1VyLWoTkNg8iJr3yXFJF7HDlwIUKI3ln39RacY=",
+        "lastModified": 1790981744,
+        "narHash": "sha256-sm6DclXJudZfP/pcDBQQsRqyMxBcQsuw+7yQr4rBBLE=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "80d901ec0377e19ac3f7bb8c035201e2e098cc97",
+        "rev": "55ba7f49ef2962b42cbd126522b7df5f95037679",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "80d901ec0377e19ac3f7bb8c035201e2e098cc97",
+        "rev": "55ba7f49ef2962b42cbd126522b7df5f95037679",
         "type": "github"
       }
     },
     "nixpkgs-kct": {
       "locked": {
-        "lastModified": 1763934636,
-        "narHash": "sha256-9glbI7f1uU+yzQCq5LwLgdZqx6svOhZWkd4JRY265fc=",
+        "lastModified": 1787814960,
+        "narHash": "sha256-PYZq1qzCJXC2zGI0mH07vrZBsw6DRBAOX0jN1pPtqOQ=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "ee09932cedcef15aaf476f9343d1dea2cb77e261",
+        "rev": "c27cdad491a991b11ed731760aa2ef8db0cb0410",
         "type": "github"
       },
       "original": {
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "ee09932cedcef15aaf476f9343d1dea2cb77e261",
+        "rev": "c27cdad491a991b11ed731760aa2ef8db0cb0410",
+        "type": "github"
+      }
+    },
+    "nixpkgs-shellcheck": {
+      "locked": {
+        "lastModified": 1790981744,
+        "narHash": "sha256-sm6DclXJudZfP/pcDBQQsRqyMxBcQsuw+7yQr4rBBLE=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "55ba7f49ef2962b42cbd126522b7df5f95037679",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "55ba7f49ef2962b42cbd126522b7df5f95037679",
         "type": "github"
       }
     },
@@ -49,7 +65,8 @@
       "inputs": {
         "nixpkgs": "nixpkgs",
         "nixpkgs-golangci": "nixpkgs-golangci",
-        "nixpkgs-kct": "nixpkgs-kct"
+        "nixpkgs-kct": "nixpkgs-kct",
+        "nixpkgs-shellcheck": "nixpkgs-shellcheck"
       }
     }
   },

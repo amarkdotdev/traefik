@@ -36,6 +36,13 @@ rules:
       - list
       - watch
   - apiGroups:
+      - certificates.k8s.io
+    resources:
+      - clustertrustbundles
+    verbs:
+      - list
+      - watch
+  - apiGroups:
       - gateway.networking.k8s.io
     resources:
       - gatewayclasses
@@ -46,6 +53,7 @@ rules:
       - tlsroutes
       - referencegrants
       - backendtlspolicies
+      - listenersets
     verbs:
       - get
       - list
@@ -61,6 +69,7 @@ rules:
       - tlsroutes/status
       - referencegrants/status
       - backendtlspolicies/status
+      - listenersets/status
     verbs:
       - update
 

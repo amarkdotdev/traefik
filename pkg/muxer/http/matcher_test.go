@@ -262,8 +262,41 @@ func TestHostMatcher(t *testing.T) {
 			expected: map[string]int{
 				"https://test.example.com":      http.StatusOK,
 				"https://other.example.com":     http.StatusOK,
+				"https://foo.test.example.com":  http.StatusNotFound,
 				"https://example.com":           http.StatusNotFound,
 				"https://test.otherexample.com": http.StatusNotFound,
+			},
+		},
+		{
+			desc:          "bare double wildcard",
+			rule:          "Host(`**`)",
+			expectedError: true,
+		},
+		{
+			desc:          "wildcard not as a prefix",
+			rule:          "Host(`*.*.example.com`)",
+			expectedError: true,
+		},
+		{
+			desc: "double wildcard matcher",
+			rule: "Host(`**.example.com`)",
+			expected: map[string]int{
+				"https://test.example.com":      http.StatusOK,
+				"https://foo.test.example.com":  http.StatusOK,
+				"https://example.com":           http.StatusNotFound,
+				"https://test.otherexample.com": http.StatusNotFound,
+			},
+		},
+
+		{
+			desc: "* match everything",
+			rule: "Host(`*`)",
+			expected: map[string]int{
+				"https://test.example.com":      http.StatusOK,
+				"https://other.example.com":     http.StatusOK,
+				"https://example.com":           http.StatusOK,
+				"https://test.otherexample.com": http.StatusOK,
+				"https://localhost":             http.StatusOK,
 			},
 		},
 	}

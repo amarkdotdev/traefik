@@ -40,6 +40,10 @@ spec:
       accessLogs: true
       metrics: true
       tracing: true
+    # Override the entry point timeouts
+    respondingTimeouts:
+      readTimeout: 30s
+      writeTimeout: 30s
     # Set a priority
     priority: 10
     services:
@@ -96,9 +100,11 @@ spec:
 | <a id="opt-routesn-observability-metrics" href="#opt-routesn-observability-metrics" title="#opt-routesn-observability-metrics">`routes[n].`<br />`observability.`<br />`metrics`</a> | Defines whether the route will produce [metrics](../../../../install-configuration/observability/metrics.md). See [here](../../../http/routing/observability.md) for more information.                                                                                                                                                                                           | false   | No       |
 | <a id="opt-routesn-observability-tracing" href="#opt-routesn-observability-tracing" title="#opt-routesn-observability-tracing">`routes[n].`<br />`observability.`<br />`tracing`</a> | Defines whether the route will produce [traces](../../../../install-configuration/observability/tracing.md). See [here](../../../http/routing/observability.md) for more information.                                                                                                                                                                                            | false   | No       |
 | <a id="opt-routesn-observability-traceVerbosity" href="#opt-routesn-observability-traceVerbosity" title="#opt-routesn-observability-traceVerbosity">`routes[n].`<br />`observability.`<br />`traceVerbosity`</a> | Defines the verbosity level of the tracing for this route. Valid values are `minimal` and `detailed`. See [here](../../../http/routing/observability.md) for more information.                                                                                                                                                                                                   | minimal | No       |
+| <a id="opt-routesn-respondingTimeouts-readTimeout" href="#opt-routesn-respondingTimeouts-readTimeout" title="#opt-routesn-respondingTimeouts-readTimeout">`routes[n].`<br />`respondingTimeouts.`<br />`readTimeout`</a> | Defines the maximum duration for reading the request body on the route.<br />`0` means no timeout. When unset, the entry point `readTimeout` applies. See [`readTimeout`](../../../http/routing/router.md#opt-respondingTimeouts-readTimeout) for more information.                                                                                                                       |         | No       |
+| <a id="opt-routesn-respondingTimeouts-writeTimeout" href="#opt-routesn-respondingTimeouts-writeTimeout" title="#opt-routesn-respondingTimeouts-writeTimeout">`routes[n].`<br />`respondingTimeouts.`<br />`writeTimeout`</a> | Defines the maximum duration for handling the request on the route: the router middlewares, the backend processing (including retries), and the response write.<br />`0` means no timeout. When unset, the entry point `writeTimeout` applies. See [`writeTimeout`](../../../http/routing/router.md#opt-respondingTimeouts-writeTimeout) for more information.                                                                      |         | No       |
 | <a id="opt-tls" href="#opt-tls" title="#opt-tls">`tls`</a> | TLS configuration.<br />Can be an empty value(`{}`):<br />A self signed is generated in such a case<br />(or the [default certificate](../tls/tlsstore.md) is used if it is defined.)                                                                                                                                                                                                   |         | No       |
 | <a id="opt-routesn-services" href="#opt-routesn-services" title="#opt-routesn-services">`routes[n].`<br />`services`</a> | List of any combination of [TraefikService](./traefikservice.md) and [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/). <br /> Exhaustive list of option in the [`Service`](./service.md#configuration-options) documentation.                                                                                                              |         | No       |
-| <a id="opt-tls-secretName" href="#opt-tls-secretName" title="#opt-tls-secretName">`tls.secretName`</a> | [Secret](https://kubernetes.io/docs/concepts/configuration/secret/) name used to store the certificate (in the same namesapce as the `IngressRoute`)                                                                                                                                                                                                                             | ""      | No       |
+| <a id="opt-tls-secretName" href="#opt-tls-secretName" title="#opt-tls-secretName">`tls.secretName`</a> | [Secret](https://kubernetes.io/docs/concepts/configuration/secret/) name used to store the certificate (in the same namespace as the `IngressRoute`)                                                                                                                                                                                                                             | ""      | No       |
 | <a id="opt-tls-options-name" href="#opt-tls-options-name" title="#opt-tls-options-name">`tls.`<br />`options.name`</a> | Name of the [`TLSOption`](../tls/tlsoption.md) to use.<br />More information [here](#tls-options).                                                                                                                                                                                                                                                                                      | ""      | No       |
 | <a id="opt-tls-options-namespace" href="#opt-tls-options-namespace" title="#opt-tls-options-namespace">`tls.`<br />`options.namespace`</a> | Namespace of the [`TLSOption`](../tls/tlsoption.md) to use.                                                                                                                                                                                                                                                                                                                             | ""      | No       |
 | <a id="opt-tls-certResolver" href="#opt-tls-certResolver" title="#opt-tls-certResolver">`tls.certResolver`</a> | Name of the [Certificate Resolver](../../../../install-configuration/tls/certificate-resolvers/overview.md) to use to generate automatic TLS certificates.                                                                                                                                                                                                                       | ""      | No       |
@@ -183,6 +189,10 @@ Since a TLS options reference is mapped to a host name, if a configuration intro
 a situation where the same host name (from a `Host` rule) gets matched with two 
 TLS options references, a conflict occurs, such as in the example below.
 
+The conflict detection is not scoped to a namespace: an `IngressRoute` defined in any
+namespace, and even a router coming from another provider, conflicts with this one as
+soon as it serves the same host name on the same entry point.
+
 ??? example
 
     ```yaml tab="IngressRoute01"
@@ -225,6 +235,14 @@ TLS options references, a conflict occurs, such as in the example below.
 If that happens, both mappings are discarded, and the host name
 (`example.net` in the example) for these routers gets associated with
  the default TLS options instead.
+
+!!! important "Default TLS Options"
+
+    The `default` TLS options are the fallback of the conflict resolution, and should
+    therefore not be less secure than the options they can replace.
+
+    See [Conflicting TLS Options](../../../http/tls/tls-options.md#conflicting-tls-options)
+    for more information.
 
 ### Multi-Layer Routing with IngressRoutes
 
